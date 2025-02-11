@@ -1,187 +1,59 @@
-import { inMemoryCache } from "https://deno.land/x/httpcache@0.1.2/in_memory.ts";
-
-function parseJSON(json: string, assert: (val: any) => boolean): any | null {
-  try {
-    const val = JSON.parse(json);
-    if (assert(val) !== true) return null
-
-    return val
-  } catch {
-    return null;
-  }
+function tryParse<T = any>(json: string, isValid: (value) => unknown): T | undefined{
+	try{
+		const value = JSON.parse(json)
+		if(isValid(value))
+			return value
+	}
+	catch{}
 }
 
-const RS_FORBIDDEN_HEADERS = [
-  // 'Accept-Charset',
-  // 'Accept-Encoding',
-  // 'Connection',
-  // 'Content-Length',
-  "Set-Cookie",
-  // 'Date',
-  // 'DNT',
-  // 'Expect',
-  "Host",
-  // 'Keep-Alive',
-  "Origin",
-  // 'Referer',
-  // 'TE',
-  // 'Trailer',
-  // 'Transfer-Encoding',
-  // 'Upgrade',
-  // 'Via'
-];
-const RS_DEFAULT_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "*",
-};
-const PROXYS = {
-  "win": "https://api.allorigins.win/raw?url="
-};
-const DOMAIN_BANNED = ["nipogota.com.br", "chat.typefunnel.space", "localhost:3000"]
-
-const CACHE_DIR = "./cache/";
-const CACHE_TIME = 3600; // 1 hour
-const CACHE_SIZE_LIMIT = 300 * 1024 * 1024; // 300MB
-
-const isArray = Array.isArray
-const isObject = (val: any) => typeof val === 'object' && val !== null
-
-const server = Deno.listen({ port: 8000 });
-console.log(`HTTP webserver running. Access it at: http://localhost:8000/`);
-
-for await (const conn of server) {
-  serveHttp(conn);
+function isArray(value){
+	return Array.isArray(value)
 }
 
-async function controlRequest({ request, respondWith }: Deno.RequestEvent) {
-  const $url = new URL(request.url);
-
-  const url = $url.searchParams.get("url");
-
-  if (!url) {
-    respondWith(
-      new Response("Missing url parameter", { status: 400 }),
-    );
-    return;
-  }
-
-  const rqHeaders = parseJSON(
-    $url.searchParams.get("headers") ?? "{}",
-    isObject
-  ) ?? {} as Record<string, string>;
-  const rqExcludeHeaders = parseJSON(
-    $url.searchParams.get("-headers") ?? "[]",
-    isArray
-  ) ?? [] as string[];
-  const rsHeaders = parseJSON(
-    $url.searchParams.get("rsheaders") ?? "{}",
-    isObject
-  ) ?? {} as Record<string, string>;
-  const rsExcludeHeaders = parseJSON(
-    $url.searchParams.get("-rsheaders") ?? "[]",
-    isArray
-  ) ?? [] as string[];
-  // const useCache = !!$url.searchParams.get("cache");
-  const timeout = parseInt($url.searchParams.get("timeout") ?? "0");
-  const _proxy = PROXYS[$url.searchParams.get("proxy")] ?? null;
-  const proxy: string = typeof _proxy === "string" ? _proxy : "";
-  
-  // Always exclude the Host header
-  rqExcludeHeaders.push("Host");
-
-  // Always exclude the Origin header in response
-  rsExcludeHeaders.push("Origin");
-  
-  // Get the hheadersfrom the current request
-  const headers = new Headers();
-  rqExcludeHeaders.forEach((item) => headers.delete(item));
-  const method = request.method;
-  const body = request.body;
-
-  for (const [key, value] of Object.entries(rqHeaders)) {
-    headers.set(key, value);
-  }
-
-  const host = request.headers.get("origin") || request.headers.get("referer")
-  console.log("Request to: %s from %s", url, host)
-  if (host && DOMAIN_BANNED.some(domain => host.endsWith(domain))) {
-    console.warn(`Domain name ${domain} banned`)
-    return respondWith(
-      new Response(`Your domain name ${domain} has been banned due to suspected service abuse. Please contact shin@shin.is-a.dev and explain your reasons for using this proxy.`, { status: 403 })
-    )
-  }
-
-  try {
-    const response = await fetch(proxy + url, {
-      headers,
-      method,
-      body,
-      signal: timeout ? AbortSignal.timeout(timeout) : undefined,
-    });
-    
-    const responseHeaders = new Headers(response.headers);
-    rsExcludeHeaders.forEach((item) => {
-      const value = responseHeaders.get(item);
-      responseHeaders.delete(item);
-      if (value) {
-        responseHeaders.set(`ck-${item}`, value);
-      }
-    });
-    RS_FORBIDDEN_HEADERS.forEach((item) => {
-      const value = responseHeaders.get(item);
-      responseHeaders.delete(item);
-      if (value) {
-        responseHeaders.set(`c-${item}`, value);
-      }
-      // responseHeaders.set(item, RS_FORBIDDEN_HEADERS[item]);
-    });
-    for (const [key, value] of Object.entries(RS_DEFAULT_HEADERS)) {
-      responseHeaders.set(key, value);
-    }
-    for (const [key, value] of Object.entries(rsHeaders)) {
-      responseHeaders.set(key, value);
-    }
-    
-    respondWith(
-      new Response(response.body, {
-        ...response,
-        status: response.status,
-        headers: responseHeaders,
-      }),
-    );
-    console.log("Request success")
-  } catch(err) {
-    console.error(err)
-    respondWith(
-      new Response(err + '', {
-        status: 500
-      })
-    )
-  }
+function isRecord(value){
+	return typeof value === 'object' && value && !isArray(value)
 }
 
-async function serveHttp(conn: Deno.Conn) {
-  const httpConn = Deno.serveHttp(conn);
+async function proxy(req: Request){
+	const
+		reqUrl = new URL(req.url),
+		{url, ...params} = Object.fromEntries(reqUrl.searchParams)
+	if(!url)
+		return new Response(`Missing url parameter. Usage: ${reqUrl.origin}${reqUrl.pathname}?url=<url>[&headers=<json_object>][&delheaders=<json_array>][&resheaders=<json_object>][&delresheaders=<json_array>][&timeout=<milliseconds>]. More at https://github.com/NE0N0US/deno-proxy-raiku`, {status: 400})
+	console.log(`${new Date().toISOString()}: ${url} from ${req.headers.get('referer') || req.headers.get('origin')}`)
+	const reqHeaders = Object.assign(
+		Object.fromEntries(req.headers),
+		{referer: undefined},
+		Object.fromEntries(new Headers(tryParse<Record<string, string>>(params.headers, isRecord)))
+	)
+	tryParse<string[]>(params.delheaders, isArray)?.forEach(name => delete reqHeaders[name.toLowerCase()])
+	try{
+		const
+			timeout = Math.min(0, Number.isSafeInteger(+params.timeout) ? +params.timeout : 0),
+			res = await fetch(url, {...req, headers: new Headers(reqHeaders), signal: timeout ? AbortSignal.timeout(timeout) : undefined}),
+			headers = Object.assign(
+				Object.fromEntries(res.headers),
+				{'access-control-allow-origin': '*'},
+				Object.fromEntries(new Headers(tryParse<Record<string, string>>(params.resheaders, isRecord)))
+			)
+		tryParse<string[]>(params.delresheaders, isArray)?.forEach(name => delete headers[name.toLowerCase()])
+		return new Response(res.body, {...res, headers: new Headers(headers)})
+	}
+	catch(error){
+		return new Response(error?.toString() ?? '', {status: 500})
+	}
+}
 
-  for await (const requestEvent of httpConn) {
-    await controlRequest(requestEvent);
-    // const url = new URL(requestEvent.request.url);
-    // const targetUrl = url.searchParams.get("url");
-
-    // if (targetUrl) {
-    //   const response = await fetch(targetUrl, {
-    //     method: requestEvent.request.method,
-    //   });
-    //   requestEvent.respondWith(
-    //     new Response(response.body, {
-    //       status: response.status,
-    //       headers: response.headers,
-    //     }),
-    //   );
-    // } else {
-    //   requestEvent.respondWith(
-    //     new Response("Missing url parameter", { status: 400 }),
-    //   );
-    // }
-  }
+const
+	portArg = +Deno.args[0],
+	port = Number.isSafeInteger(portArg) && portArg >= 0 && portArg <= 65_535 ? portArg : 8_000
+try{
+	const server = Deno.serve({port}, proxy)
+}
+catch(error){
+	if(error instanceof Deno.errors.AddrInUse)
+		console.log(`Port ${port} already in use. It can be specified as the first argument`)
+	else
+		console.error(error)
 }
