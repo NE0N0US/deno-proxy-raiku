@@ -24,7 +24,7 @@ async function proxy(req: Request){
 	console.log(`${new Date().toISOString()}: ${url} from ${req.headers.get('referer') || req.headers.get('origin')}`)
 	const reqHeaders = Object.assign(
 		Object.fromEntries(req.headers),
-		{referer: undefined},
+		{'cache-control': undefined, pragma: undefined, 'if-modified-since': undefined, 'if-none-match': undefined, referer: undefined},
 		Object.fromEntries(new Headers(tryParse<Record<string, string>>(params.headers, isRecord)))
 	)
 	tryParse<string[]>(params.delheaders, isArray)?.forEach(name => delete reqHeaders[name.toLowerCase()])

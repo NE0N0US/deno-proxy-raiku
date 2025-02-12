@@ -21,7 +21,7 @@ http://localhost:8000/?url=<url>[&headers=<json_object>][&delheaders=<json_array
 ### URL Parameters
 - `url`: original resource URL
 - `headers`: request headers to overwrite
-- `delheaders`: names of request headers to delete (default: `['Referer']`)
-- `resheaders`: response headers to overwrite (default: `{'Access-Control-Allow-Origin': '*'}`)
+- `delheaders`: names of request headers to delete (in addition to: `['Cache-Control', 'Pragma', 'If-Modified-Since', 'If-None-Match', 'Referer']`)
+- `resheaders`: response headers to overwrite (in addition to: `{'Access-Control-Allow-Origin': '*'}`)
 - `delresheaders`: names of response headers to delete
 - `timeout`: milliseconds to abort request after
