@@ -21,7 +21,7 @@ async function proxy(req: Request){
 		{url, ...params} = Object.fromEntries(reqUrl.searchParams)
 	if(!url)
 		return new Response(`Missing url parameter. Usage: ${reqUrl.origin}${reqUrl.pathname}?url=<url>[&headers=<json_object>][&delheaders=<json_array>][&resheaders=<json_object>][&delresheaders=<json_array>][&timeout=<milliseconds>]. More at https://github.com/NE0N0US/deno-proxy-raiku`, {status: 400})
-	console.log(`${new Date().toISOString()}: ${url} from ${req.headers.get('referer') || req.headers.get('origin')}`)
+	console.log(`${new Date().toISOString()}: ${url} from ${req.headers.get('referer') || req.headers.get('origin') || req.headers.get('host')}`)
 	const reqHeaders = Object.assign(
 		Object.fromEntries(req.headers),
 		{'cache-control': undefined, pragma: undefined, 'if-modified-since': undefined, 'if-none-match': undefined, host: undefined, origin: undefined, referer: undefined},
