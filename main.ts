@@ -20,7 +20,7 @@ async function proxy(req: Request){
 		reqUrl = new URL(req.url),
 		{url, ...params} = Object.fromEntries(reqUrl.searchParams)
 	if(!url)
-		return new Response(`Missing url parameter. Usage: ${reqUrl.origin}${reqUrl.pathname}?url=<url>[&headers=<json_object>][&delheaders=<json_array>][&resheaders=<json_object>][&delresheaders=<json_array>][&timeout=<milliseconds>]. More at https://github.com/NE0N0US/deno-proxy-raiku`, {status: 400})
+		return new Response(`Missing url parameter. Usage: ${reqUrl.origin}${reqUrl.pathname}?url=<url>[&headers=<json_object>][&delheaders=<json_array>][&resheaders=<json_object>][&delresheaders=<json_array>][&status=<status_code>][&statustext=<status_message>][&timeout=<milliseconds>]. More at https://github.com/NE0N0US/deno-proxy-raiku`, {status: 400})
 	console.log(`${new Date().toISOString()}: ${url} from ${req.headers.get('referer') || req.headers.get('origin') || req.headers.get('host')}`)
 	const reqHeaders = Object.assign(
 		Object.fromEntries(req.headers),
@@ -31,14 +31,14 @@ async function proxy(req: Request){
 	try{
 		const
 			timeout = Math.min(0, Number.isSafeInteger(+params.timeout) ? +params.timeout : 0),
-			res = await fetch(url, {...req, headers: new Headers(reqHeaders), signal: timeout ? AbortSignal.timeout(timeout) : undefined}),
+			res = await fetch(url, new Request(req, {headers: new Headers(reqHeaders), signal: timeout ? AbortSignal.timeout(timeout) : undefined})),
 			headers = Object.assign(
 				Object.fromEntries(res.headers),
 				{'access-control-allow-origin': '*'},
 				Object.fromEntries(new Headers(tryParse<Record<string, string>>(params.resheaders, isRecord)))
 			)
 		tryParse<string[]>(params.delresheaders, isArray)?.forEach(name => delete headers[name.toLowerCase()])
-		return new Response(res.body, {...res, headers: new Headers(headers)})
+		return new Response(res.body, {status: +(params.status || res.status), statusText: params.statustext ?? res.statusText, headers: new Headers(headers)})
 	}
 	catch(error){
 		return new Response(error?.toString() ?? '', {status: 500})
